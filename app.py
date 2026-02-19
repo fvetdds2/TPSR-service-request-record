@@ -47,8 +47,8 @@ def load_data():
     service_cols = [
         "FFPE processing & Embedding",
         "FFPE sectioning & H&E stain",
-        "Frozen sectioning & H&E slide",
-        "Repository FFPE sectioning & H&E stain",
+        "Frozen sectioning-unstain slide",
+        "Frozen sectioning & H&E stain",
         "Repository FFPE sectioning-unstained slide",
     ]
     for col in service_cols:
