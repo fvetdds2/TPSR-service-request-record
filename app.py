@@ -4,7 +4,7 @@ import plotly.express as px
 import openpyxl
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Service Dashboard", layout="wide")
+st.set_page_config(page_title="TPSR Service Request Dashboard", layout="wide")
 
 # -----------------------------
 # Load & Clean Data
@@ -89,7 +89,7 @@ df_filtered = df[
 # -----------------------------
 # Title
 # -----------------------------
-st.title("🔬 Histology Service Dashboard")
+st.title("MMC Translational Pathology Shared Resource Core Service Request Dashboard")
 st.caption("Cost Recovery Record – 2025/2026")
 
 st.divider()
