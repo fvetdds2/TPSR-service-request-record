@@ -1,301 +1,337 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import os
 
-# =========================================================
-# PAGE CONFIG
-# =========================================================
 st.set_page_config(
-    page_title="TPSR Analytics Platform",
-    layout="wide",
-    page_icon="📊"
+    page_title="TPSR Core Service Analytics",
+    layout="wide"
 )
 
-# =========================================================
-# DESIGN SYSTEM (Integrity / Accuracy Theme)
-# =========================================================
-PRIMARY = "#1e3a8a"     # Deep institutional blue
-SUCCESS = "#059669"
-WARNING = "#d97706"
-DANGER  = "#b91c1c"
-GRAY    = "#6b7280"
-LIGHT_BG = "#f8fafc"
-
-STATUS_COLORS = {
-    "Completed": SUCCESS,
-    "Pending": WARNING,
-    "Unknown": GRAY,
+# --------------------------------------------------
+# ENTERPRISE STYLING (Mobile + Elderly Friendly)
+# --------------------------------------------------
+st.markdown("""
+<style>
+html, body, [class*="css"]  {
+    font-size: 18px !important;
 }
 
-# =========================================================
-# GLOBAL STYLING
-# =========================================================
-st.markdown(f"""
-<style>
-[data-testid="stAppViewContainer"] {{
-    background-color: {LIGHT_BG};
-}}
-
-.block-container {{
-    padding-top: 2rem;
-}}
-
-.metric-card {{
-    background: white;
-    padding: 24px;
-    border-radius: 14px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.04);
-}}
-
-.metric-title {{
-    font-size: 0.85rem;
-    color: {GRAY};
-}}
-
-.metric-value {{
-    font-size: 1.9rem;
+h1 {
+    color: #1F3A8A;
     font-weight: 700;
-    color: {PRIMARY};
-    margin-top: 8px;
-}}
+}
 
-.section-title {{
-    font-size: 1.3rem;
+h2, h3 {
+    color: #1F3A8A;
     font-weight: 600;
-    margin-top: 30px;
-    margin-bottom: 15px;
-    color: {PRIMARY};
-}}
+}
+
+.section-box {
+    background-color: #F3F4F6;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# AUTHENTICATION (Replace with OAuth in Production)
-# =========================================================
+# --------------------------------------------------
+# PASSCODE (Use Streamlit secrets in production)
+# --------------------------------------------------
 PASSCODE = "TPSR2025"
 
-if "auth" not in st.session_state:
-    st.session_state.auth = False
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-if not st.session_state.auth:
-    st.title("Secure Access")
-    code = st.text_input("Enter Access Code", type="password")
-    if st.button("Access Platform"):
-        if code == PASSCODE:
-            st.session_state.auth = True
+if not st.session_state.authenticated:
+    st.title("🔒 TPSR Core Service Analytics")
+    entered = st.text_input("Enter Access Code", type="password")
+    if st.button("Unlock"):
+        if entered == PASSCODE:
+            st.session_state.authenticated = True
             st.rerun()
         else:
-            st.error("Invalid code.")
+            st.error("Incorrect access code.")
     st.stop()
 
-# =========================================================
-# DATA LOADING
-# =========================================================
+# --------------------------------------------------
+# LOAD DATA
+# --------------------------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_excel("cost_recovery_record_from_2025.xlsx")
+    df = pd.read_excel(
+        "cost_recovery_record_from_2025.xlsx",
+        engine="openpyxl"
+    )
 
     df["Required_Date"] = pd.to_datetime(df["Required_Date"], errors="coerce")
-    df["Month"] = df["Required_Date"].dt.to_period("M")
+    df["Month_Year"] = df["Required_Date"].dt.to_period("M")
     df["Month_Label"] = df["Required_Date"].dt.strftime("%b %Y")
-
-    df["Status"] = df["Status"].fillna("Unknown")
-    df["Cost_Recovery"] = pd.to_numeric(df["Cost_Recovery"], errors="coerce").fillna(0)
-
-    service_cols = df.columns[4:12].tolist()
 
     df["Cancer_Related_Project"] = (
         df["Cancer_Related_Project"]
-        .fillna("Unknown")
         .astype(str)
+        .str.strip()
         .str.capitalize()
     )
 
-    return df, service_cols
+    return df
 
-df, service_cols = load_data()
+df = load_data()
 
-# =========================================================
+# --------------------------------------------------
 # SIDEBAR FILTERS
-# =========================================================
+# --------------------------------------------------
 st.sidebar.header("Filters")
 
 status_filter = st.sidebar.multiselect(
-    "Status",
-    options=df["Status"].unique(),
-    default=df["Status"].unique()
+    "Select Status",
+    df["Status"].dropna().unique(),
+    default=df["Status"].dropna().unique()
 )
 
 requester_filter = st.sidebar.multiselect(
-    "Requester",
-    options=sorted(df["Requester_Name"].dropna().unique()),
-    default=sorted(df["Requester_Name"].dropna().unique())
+    "Select Requester",
+    df["Requester_Name"].dropna().unique(),
+    default=df["Requester_Name"].dropna().unique()
 )
 
-df = df[
+df_filtered = df[
     df["Status"].isin(status_filter) &
     df["Requester_Name"].isin(requester_filter)
 ]
 
-# =========================================================
+# --------------------------------------------------
 # HEADER
-# =========================================================
-st.title("MMC Translational Pathology Shared Resource")
-st.caption("Commercial Analytics Platform • 2025–2026")
+# --------------------------------------------------
+st.title("Translational Pathology Shared Resource")
+st.subheader("Core Service Request Activity & Cost Recovery Overview")
+st.divider()
 
-# =========================================================
-# KPI STRIP
-# =========================================================
-completed = int((df["Status"] == "Completed").sum())
-pending = int((df["Status"] == "Pending").sum())
-total_cost = df["Cost_Recovery"].sum()
-total_units = int(df[service_cols].sum().sum())
+# --------------------------------------------------
+# STATUS DISTRIBUTION
+# --------------------------------------------------
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Service Request Status Distribution")
 
-def metric_card(title, value):
-    st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">{title}</div>
-            <div class="metric-value">{value}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    metric_card("Completed Requests", completed)
-with c2:
-    metric_card("Pending Requests", pending)
-with c3:
-    metric_card("Total Cost Recovery", f"${total_cost:,.0f}")
-with c4:
-    metric_card("Total Service Units", total_units)
-
-# =========================================================
-# STATUS & CANCER DISTRIBUTION
-# =========================================================
-st.markdown('<div class="section-title">Operational Overview</div>', unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    status_counts = df["Status"].value_counts().reset_index()
-    status_counts.columns = ["Status", "Count"]
-
-    fig_status = px.pie(
-        status_counts,
-        names="Status",
-        values="Count",
-        hole=0.5,
-        color="Status",
-        color_discrete_map=STATUS_COLORS,
-    )
-    fig_status.update_layout(template="plotly_white")
-    st.plotly_chart(fig_status, use_container_width=True)
-
-with col2:
-    cancer_counts = df["Cancer_Related_Project"].value_counts().reset_index()
-    cancer_counts.columns = ["Cancer", "Count"]
-
-    fig_cancer = px.pie(
-        cancer_counts,
-        names="Cancer",
-        values="Count",
-        hole=0.5,
-        color_discrete_sequence=[PRIMARY, GRAY, DANGER],
-    )
-    fig_cancer.update_layout(template="plotly_white")
-    st.plotly_chart(fig_cancer, use_container_width=True)
-
-# =========================================================
-# REQUESTER PERFORMANCE
-# =========================================================
-st.markdown('<div class="section-title">Requester Performance</div>', unsafe_allow_html=True)
-
-req = (
-    df.groupby("Requester_Name")
-    .agg(Requests=("Status", "count"),
-         Revenue=("Cost_Recovery", "sum"))
+status_counts = (
+    df_filtered["Status"]
+    .value_counts()
     .reset_index()
-    .sort_values("Requests", ascending=False)
+)
+
+status_counts.columns = ["Status", "Number of Requests"]
+
+fig_status = px.bar(
+    status_counts,
+    x="Status",
+    y="Number of Requests",
+    color="Status",
+    text="Number of Requests",
+    color_discrete_map={
+        "Completed": "#16A34A",
+        "Pending": "#F59E0B",
+        "Unknown": "#9CA3AF"
+    }
+)
+
+fig_status.update_traces(textposition="outside")
+fig_status.update_layout(
+    xaxis_title="Request Status",
+    yaxis_title="Number of Requests",
+    showlegend=False,
+    font=dict(size=18)
+)
+
+st.plotly_chart(fig_status, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --------------------------------------------------
+# REQUESTS BY INVESTIGATOR
+# --------------------------------------------------
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Requests by Investigator")
+
+req_counts = (
+    df_filtered
+    .groupby("Requester_Name")
+    .size()
+    .reset_index(name="Number of Requests")
+    .sort_values("Number of Requests", ascending=False)
 )
 
 fig_req = px.bar(
-    req,
+    req_counts,
     x="Requester_Name",
-    y="Requests",
-    color_discrete_sequence=[PRIMARY],
+    y="Number of Requests",
+    text="Number of Requests",
+    color_discrete_sequence=["#1F3A8A"]
 )
-fig_req.update_layout(template="plotly_white", xaxis_tickangle=-30)
+
+fig_req.update_traces(textposition="outside")
+fig_req.update_layout(
+    xaxis_title="Investigator",
+    yaxis_title="Number of Requests",
+    showlegend=False,
+    font=dict(size=18)
+)
+
 st.plotly_chart(fig_req, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# =========================================================
-# MONTHLY SERVICE TREND
-# =========================================================
-st.markdown('<div class="section-title">Monthly Service Trend</div>', unsafe_allow_html=True)
+# --------------------------------------------------
+# SERVICE TYPE DISTRIBUTION
+# --------------------------------------------------
+service_cols = [
+    "FFPE processing & Embedding",
+    "FFPE sectioning & H&E stain",
+    "Frozen sectioning-unstained slide",
+    "Frozen sectioning & H&E stain",
+    "Frozen sectioning-step section",
+    "Repository FFPE sectioning-unstained slide",
+    "histology tissue collection vials",
+    "histopathology support (hr)"
+]
 
-df["Total_Units"] = df[service_cols].sum(axis=1)
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Service Type Utilization")
 
-monthly = (
-    df.groupby(["Month", "Month_Label"])
-    ["Total_Units"]
+svc_totals = (
+    df_filtered[service_cols]
     .sum()
     .reset_index()
-    .sort_values("Month")
 )
 
-fig_month = px.area(
-    monthly,
+svc_totals.columns = ["Service Type", "Total Units"]
+svc_totals = svc_totals.sort_values("Total Units", ascending=False)
+
+fig_svc = px.bar(
+    svc_totals,
+    x="Service Type",
+    y="Total Units",
+    text="Total Units",
+    color_discrete_sequence=["#0F766E"]
+)
+
+fig_svc.update_traces(textposition="outside")
+fig_svc.update_layout(
+    xaxis_title="Service Type",
+    yaxis_title="Total Units",
+    showlegend=False,
+    font=dict(size=18)
+)
+
+st.plotly_chart(fig_svc, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --------------------------------------------------
+# MONTHLY SERVICE VOLUME
+# --------------------------------------------------
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Monthly Service Volume")
+
+df_filtered["Total_Service_Units"] = df_filtered[service_cols].sum(axis=1)
+
+monthly_services = (
+    df_filtered
+    .groupby(["Month_Year", "Month_Label"])["Total_Service_Units"]
+    .sum()
+    .reset_index()
+    .sort_values("Month_Year")
+)
+
+fig_month = px.bar(
+    monthly_services,
     x="Month_Label",
-    y="Total_Units",
-    color_discrete_sequence=[PRIMARY]
+    y="Total_Service_Units",
+    text="Total_Service_Units",
+    color_discrete_sequence=["#1F3A8A"]
 )
 
+fig_month.update_traces(textposition="outside")
 fig_month.update_layout(
-    template="plotly_white",
-    hovermode="x unified"
+    xaxis_title="Month",
+    yaxis_title="Total Service Units",
+    showlegend=False,
+    font=dict(size=18)
 )
 
 st.plotly_chart(fig_month, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# =========================================================
-# COST TREND
-# =========================================================
-st.markdown('<div class="section-title">Revenue Trend</div>', unsafe_allow_html=True)
+# --------------------------------------------------
+# MONTHLY COST RECOVERY
+# --------------------------------------------------
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Monthly Cost Recovery")
 
-cost_trend = (
-    df.groupby(["Month", "Month_Label"])
-    ["Cost_Recovery"]
+monthly_cost = (
+    df_filtered
+    .groupby(["Month_Year", "Month_Label"])["Cost_Recovery"]
     .sum()
     .reset_index()
-    .sort_values("Month")
+    .sort_values("Month_Year")
 )
 
 fig_cost = px.line(
-    cost_trend,
+    monthly_cost,
     x="Month_Label",
     y="Cost_Recovery",
     markers=True,
-    color_discrete_sequence=[PRIMARY]
+    color_discrete_sequence=["#0F766E"]
 )
 
 fig_cost.update_layout(
-    template="plotly_white",
-    yaxis_tickprefix="$",
-    hovermode="x unified"
+    xaxis_title="Month",
+    yaxis_title="Cost Recovery ($)",
+    font=dict(size=18)
 )
 
 st.plotly_chart(fig_cost, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# =========================================================
-# DATA EXPORT
-# =========================================================
-st.markdown('<div class="section-title">Data Access</div>', unsafe_allow_html=True)
+# --------------------------------------------------
+# CANCER RELATED PROJECT DISTRIBUTION
+# --------------------------------------------------
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Cancer-Related Project Distribution")
 
-csv = df.to_csv(index=False).encode("utf-8")
+cancer_counts = (
+    df_filtered["Cancer_Related_Project"]
+    .value_counts()
+    .reset_index()
+)
 
-st.download_button(
-    "Download Filtered Dataset",
-    csv,
-    "TPSR_filtered_data.csv",
-    "text/csv"
+cancer_counts.columns = ["Cancer Related", "Number of Projects"]
+
+fig_cancer = px.bar(
+    cancer_counts,
+    x="Cancer Related",
+    y="Number of Projects",
+    text="Number of Projects",
+    color_discrete_map={
+        "Yes": "#1F3A8A",
+        "No": "#0F766E",
+        "Unknown": "#9CA3AF"
+    }
+)
+
+fig_cancer.update_traces(textposition="outside")
+fig_cancer.update_layout(
+    xaxis_title="Cancer Related Project",
+    yaxis_title="Number of Projects",
+    showlegend=False,
+    font=dict(size=18)
+)
+
+st.plotly_chart(fig_cancer, use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# --------------------------------------------------
+# RAW DATA TABLE
+# --------------------------------------------------
+with st.expander("View Detailed Data Table"):
+    st.dataframe(df_filtered, use_container_width=True)
 )
