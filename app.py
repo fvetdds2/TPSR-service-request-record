@@ -227,29 +227,9 @@ st.divider()
 # ─────────────────────────────────────────
 # Cancer Related Project Chart
 # ─────────────────────────────────────────
-st.subheader("🎗️ Cancer Related Project")
+st.subheader("Cancer Related Project")
 
-cancer_col1, cancer_col2 = st.columns(2)
-
-with cancer_col1:
-    cancer_counts = (
-        df_filtered["Cancer_Related_Project"]
-        .value_counts()
-        .reindex(["Yes", "No", "Unknown"], fill_value=0)
-        .reset_index()
-    )
-    cancer_counts.columns = ["Cancer_Related", "Count"]
-    cancer_counts = cancer_counts[cancer_counts["Count"] > 0]
-
-    fig_cancer_pie = px.pie(
-        cancer_counts, names="Cancer_Related", values="Count",
-        hole=0.4,
-        color="Cancer_Related",
-        color_discrete_map={"Yes": "#DC3545", "No": "#007BFF", "Unknown": "#6C757D"}, # Red for Yes, Blue for No, Grey for Unknown
-    )
-    fig_cancer_pie.update_traces(textinfo="label+percent+value")
-    fig_cancer_pie.update_layout(legend_title_text="Cancer Related")
-    st.plotly_chart(fig_cancer_pie, use_container_width=True)
+cancer_col2 = st.columns(1)
 
 with cancer_col2:
     # Stacked bar: Cancer Yes/No per requester
