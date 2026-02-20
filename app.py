@@ -21,24 +21,21 @@ DANGER_RED = "#DC2626"
 NEUTRAL_GRAY = "#6B7280"
 
 # ==========================================================
-# GLOBAL STYLING (Silicon Valley Minimal Design)
+# GLOBAL STYLING
 # ==========================================================
 
 st.markdown("""
 <style>
 .main {background-color:#F9FAFB;}
 .block-container {padding-top:2rem;}
-
 h1 {font-weight:700; letter-spacing:-0.5px;}
 h2, h3 {font-weight:600;}
-
 .metric-card {
     background:white;
     padding:1.4rem;
     border-radius:18px;
     box-shadow:0 6px 18px rgba(0,0,0,0.05);
 }
-
 .section-card {
     background:white;
     padding:2rem;
@@ -50,7 +47,7 @@ h2, h3 {font-weight:600;}
 """, unsafe_allow_html=True)
 
 # ==========================================================
-# AUTHENTICATION LAYER
+# AUTHENTICATION
 # ==========================================================
 
 PASSCODE = "TPSR2025"
@@ -61,7 +58,7 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.markdown("<h1 style='text-align:center'>TPSR CoreSight™</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center;color:gray'>Enterprise Laboratory Intelligence Platform</p>", unsafe_allow_html=True)
-    
+
     entered = st.text_input("Enter Access Key", type="password")
     if st.button("Secure Login"):
         if entered == PASSCODE:
@@ -74,6 +71,7 @@ if not st.session_state.authenticated:
 # ==========================================================
 # DATA LOADER
 # ==========================================================
+
 @st.cache_data
 def load_data():
     wb = openpyxl.load_workbook("cost_recovery_record_from_2025.xlsx")
@@ -83,7 +81,6 @@ def load_data():
     service_cols = [header_map[i] for i in range(5, 13)]
 
     def safe_float(value):
-        """Enterprise-safe numeric conversion."""
         if value is None:
             return 0.0
         if isinstance(value, (int, float)):
@@ -92,7 +89,7 @@ def load_data():
             return 0.0
         try:
             return float(str(value).strip())
-        except (ValueError, TypeError):
+        except:
             return 0.0
 
     records = []
@@ -107,28 +104,32 @@ def load_data():
             "Status": row[2] if len(row) > 2 and row[2] else "Unknown",
             "Cost_Recovery": safe_float(row[3]) if len(row) > 3 else 0.0,
             "Cancer_Related_Project": (
-                str(row[13]).capitalize()
-                if len(row) > 13 and row[13]
-                else "Unknown"
+                str(row[13]).capitalize() if len(row) > 13 and row[13] else "Unknown"
             ),
         }
 
-        # SAFE SERVICE COLUMN PARSING
         for i, col in enumerate(service_cols):
             index = 4 + i
-            if index < len(row):
-                record[col] = safe_float(row[index])
-            else:
-                record[col] = 0.0
+            record[col] = safe_float(row[index]) if index < len(row) else 0.0
 
         records.append(record)
 
     df = pd.DataFrame(records)
 
+    df.columns = df.columns.str.strip()
+
     df["Month"] = df["Required_Date"].dt.to_period("M")
     df["Month_Label"] = df["Required_Date"].dt.strftime("%b %Y")
 
     return df, service_cols
+
+
+# LOAD DATA BEFORE FILTERS
+try:
+    df, service_cols = load_data()
+except Exception as e:
+    st.error(f"Data loading failed: {e}")
+    st.stop()
 
 # ==========================================================
 # HEADER
@@ -139,26 +140,30 @@ st.markdown("<p style='color:#6B7280'>Translational Pathology Shared Resource In
 st.divider()
 
 # ==========================================================
-# FILTER PANEL
+# FILTER PANEL (FIXED VERSION)
 # ==========================================================
-st.write("DF exists?", "df" in locals())
+
 st.sidebar.header("Global Filters")
+
+# Safe option extraction
+status_options = sorted(df["Status"].dropna().astype(str).unique())
+requester_options = sorted(df["Requester_Name"].dropna().astype(str).unique())
 
 status_filter = st.sidebar.multiselect(
     "Project Status",
-    df["Status"].unique(),
-    default=df["Status"].unique()
+    options=status_options,
+    default=status_options
 )
 
 requester_filter = st.sidebar.multiselect(
     "Requester",
-    df["Requester_Name"].unique(),
-    default=df["Requester_Name"].unique()
+    options=requester_options,
+    default=requester_options
 )
 
 df_filtered = df[
-    df["Status"].isin(status_filter) &
-    df["Requester_Name"].isin(requester_filter)
+    df["Status"].astype(str).isin(status_filter) &
+    df["Requester_Name"].astype(str).isin(requester_filter)
 ]
 
 # ==========================================================
@@ -177,8 +182,8 @@ tab1, tab2, tab3 = st.tabs([
 
 with tab1:
 
-    completed = (df_filtered["Status"]=="Completed").sum()
-    pending = (df_filtered["Status"]=="Pending").sum()
+    completed = (df_filtered["Status"] == "Completed").sum()
+    pending = (df_filtered["Status"] == "Pending").sum()
     revenue = df_filtered["Cost_Recovery"].sum()
     total_units = df_filtered[service_cols].sum().sum()
 
@@ -238,7 +243,7 @@ with tab3:
     st.subheader("Revenue Trend")
 
     revenue_trend = (
-        df_filtered.groupby(["Month","Month_Label"])["Cost_Recovery"]
+        df_filtered.groupby(["Month", "Month_Label"])["Cost_Recovery"]
         .sum().reset_index()
         .sort_values("Month")
     )
