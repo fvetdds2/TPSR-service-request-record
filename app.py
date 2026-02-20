@@ -17,9 +17,10 @@ def load_data():
     # Build header map from row 1: col_number -> header name
     header_map = {cell.column: cell.value for cell in ws[1] if cell.value}
 
-    # Service columns = E(5) through L(12); M(13) = specie (not a service)
+    # Service columns = E(5) through L(12); M(13) = specie; N(14) = Cancer_Related_Project
     service_col_nums = [5, 6, 7, 8, 9, 10, 11, 12]
     service_cols     = [header_map[c] for c in service_col_nums]
+    CANCER_COL       = 14   # column N
 
     # Col E (FFPE processing & Embedding) is sometimes stored as an Excel
     # date serial. Convert it back to the integer count (days since 1899-12-30).
@@ -46,11 +47,17 @@ def load_data():
             raw = excel_date_to_int(raw)
             svc[col_name] = float(raw) if isinstance(raw, (int, float)) else 0.0
 
+        cancer_raw = vals.get(CANCER_COL, "")
+        cancer_val = str(cancer_raw).strip().capitalize() if cancer_raw else "Unknown"
+        if cancer_val not in ("Yes", "No"):
+            cancer_val = "Unknown"
+
         records.append({
-            "Requester_Name": name,
-            "Required_Date":  pd.to_datetime(date, errors="coerce"),
-            "Status":         status or "Unknown",
-            "Cost_Recovery":  float(cost) if isinstance(cost, (int, float)) else 0.0,
+            "Requester_Name":         name,
+            "Required_Date":          pd.to_datetime(date, errors="coerce"),
+            "Status":                 status or "Unknown",
+            "Cost_Recovery":          float(cost) if isinstance(cost, (int, float)) else 0.0,
+            "Cancer_Related_Project": cancer_val,
             **svc,
         })
 
@@ -201,6 +208,56 @@ with right:
     fig_req.update_traces(textposition="outside")
     fig_req.update_layout(xaxis_tickangle=-30, showlegend=False)
     st.plotly_chart(fig_req, use_container_width=True)
+
+# ─────────────────────────────────────────
+# Cancer Related Project Chart
+# ─────────────────────────────────────────
+st.subheader("🎗️ Cancer Related Project")
+
+cancer_col1, cancer_col2 = st.columns(2)
+
+with cancer_col1:
+    cancer_counts = (
+        df_filtered["Cancer_Related_Project"]
+        .value_counts()
+        .reindex(["Yes", "No", "Unknown"], fill_value=0)
+        .reset_index()
+    )
+    cancer_counts.columns = ["Cancer_Related", "Count"]
+    cancer_counts = cancer_counts[cancer_counts["Count"] > 0]
+
+    fig_cancer_pie = px.pie(
+        cancer_counts, names="Cancer_Related", values="Count",
+        hole=0.4,
+        color="Cancer_Related",
+        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+    )
+    fig_cancer_pie.update_traces(textinfo="label+percent+value")
+    fig_cancer_pie.update_layout(legend_title_text="Cancer Related")
+    st.plotly_chart(fig_cancer_pie, use_container_width=True)
+
+with cancer_col2:
+    # Stacked bar: Cancer Yes/No per requester
+    cancer_req = (
+        df_filtered.groupby(["Requester_Name", "Cancer_Related_Project"])
+        .size()
+        .reset_index(name="Count")
+    )
+    fig_cancer_bar = px.bar(
+        cancer_req,
+        x="Requester_Name", y="Count",
+        color="Cancer_Related_Project",
+        barmode="stack",
+        text="Count",
+        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+        labels={"Requester_Name": "Requester", "Count": "Projects",
+                "Cancer_Related_Project": "Cancer Related"},
+    )
+    fig_cancer_bar.update_traces(textposition="inside")
+    fig_cancer_bar.update_layout(xaxis_tickangle=-30, legend_title_text="Cancer Related")
+    st.plotly_chart(fig_cancer_bar, use_container_width=True)
+
+st.divider()
 
 # ─────────────────────────────────────────
 # Service Types Distribution (Cols E–L)
