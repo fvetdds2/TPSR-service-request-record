@@ -334,4 +334,3 @@ st.markdown('</div>', unsafe_allow_html=True)
 # --------------------------------------------------
 with st.expander("View Detailed Data Table"):
     st.dataframe(df_filtered, use_container_width=True)
-)
