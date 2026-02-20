@@ -15,17 +15,17 @@ html, body, [class*="css"]  {
 }
 
 h1 {
-    color: #1F3A8A;
+    color: #007BFF; /* Primary brand blue */
     font-weight: 700;
 }
 
 h2, h3 {
-    color: #1F3A8A;
+    color: #007BFF; /* Primary brand blue */
     font-weight: 600;
 }
 
 .section-box {
-    background-color: #F3F4F6;
+    background-color: #F3F4F6; /* Light grey, often used for content sections */
     padding: 20px;
     border-radius: 12px;
     margin-bottom: 25px;
@@ -51,10 +51,12 @@ if not st.session_state.authenticated:
             justify-content: center; margin-top: 8vh;
         }
         .lock-title {
-            font-size: 2rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem;
+            font-size: 2rem; font-weight: 700; color: #007BFF; /* Primary brand blue */
+            margin-bottom: 0.25rem;
         }
         .lock-subtitle {
-            font-size: 1rem; color: #555; margin-bottom: 2rem;
+            font-size: 1rem; color: #6C757D; /* Darker grey for subtitles */
+            margin-bottom: 2rem;
         }
         </style>
         <div class="lock-container">
@@ -164,17 +166,19 @@ short_labels = {
 
 # Status colors — used in BOTH sidebar labels and pie chart
 STATUS_COLORS = {
-    "Completed": "#2ecc71",
-    "Pending":   "#e67e22",
-    "Unknown":   "#95a5a6",
+    "Completed": "#28A745", # Green for success
+    "Pending":   "#FFC107", # Orange/Yellow for warning/pending
+    "Unknown":   "#6C757D", # Muted grey for unknown/neutral
 }
 
 # Requester colors — distinct color per requester, used in sidebar + bar charts
 REQUESTER_PALETTE = [
-    "#3498db", "#9b59b6", "#e74c3c", "#1abc9c",
-    "#f39c12", "#2980b9", "#d35400", "#27ae60",
-    "#8e44ad", "#c0392b",
+    "#007BFF", "#6F42C1", "#DC3545", "#20C997",  # Primary brand blue, indigo, red, teal
+    "#FD7E14", "#6610F2", "#17A2B8", "#E83E8C",  # Orange, purple, cyan, pink
+    "#FFC107", "#28A745",                        # Yellow, green (can be used if distinct enough from status)
+    "#343A40", "#A64D79"                         # Dark grey, a muted magenta for variety
 ]
+
 all_requesters    = sorted(df["Requester_Name"].dropna().unique().tolist())
 REQUESTER_COLORS  = {name: REQUESTER_PALETTE[i % len(REQUESTER_PALETTE)]
                      for i, name in enumerate(all_requesters)}
@@ -189,7 +193,7 @@ st.sidebar.markdown("**Status**")
 status_options  = sorted(df["Status"].unique().tolist())
 status_filter   = []
 for s in status_options:
-    color = STATUS_COLORS.get(s, "#cccccc")
+    color = STATUS_COLORS.get(s, "#95a5a6") # Fallback to a neutral grey if not defined
     checked = st.sidebar.checkbox(
         label=s, value=True, key=f"status_{s}",
         help=f"Filter by {s}"
@@ -306,7 +310,7 @@ with cancer_col1:
         cancer_counts, names="Cancer_Related", values="Count",
         hole=0.4,
         color="Cancer_Related",
-        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+        color_discrete_map={"Yes": "#DC3545", "No": "#007BFF", "Unknown": "#6C757D"}, # Red for Yes, Blue for No, Grey for Unknown
     )
     fig_cancer_pie.update_traces(textinfo="label+percent+value")
     fig_cancer_pie.update_layout(legend_title_text="Cancer Related")
@@ -325,7 +329,7 @@ with cancer_col2:
         color="Cancer_Related_Project",
         barmode="stack",
         text="Count",
-        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+        color_discrete_map={"Yes": "#DC3545", "No": "#007BFF", "Unknown": "#6C757D"}, # Red for Yes, Blue for No, Grey for Unknown
         labels={"Requester_Name": "Requester", "Count": "Projects",
                 "Cancer_Related_Project": "Cancer Related"},
     )
@@ -348,7 +352,7 @@ svc_totals = svc_totals.sort_values("Total_Units", ascending=False)
 fig_svc = px.bar(
     svc_totals, x="Short_Label", y="Total_Units",
     color="Short_Label",
-    color_discrete_sequence=px.colors.qualitative.Safe,
+    color_discrete_sequence=px.colors.qualitative.Safe, # Good for distinct categories
     text="Total_Units",
     labels={"Short_Label": "Service Type", "Total_Units": "Total Units"},
 )
@@ -370,7 +374,7 @@ if not melt.empty:
     fig_grp = px.bar(
         melt, x="Requester_Name", y="Units",
         color="Service_Type", barmode="group", text="Units",
-        color_discrete_sequence=px.colors.qualitative.Safe,
+        color_discrete_sequence=px.colors.qualitative.Safe, # Good for distinct categories
         labels={"Requester_Name": "Requester", "Units": "Units", "Service_Type": "Service"},
     )
     fig_grp.update_traces(textposition="outside")
@@ -395,7 +399,8 @@ svc_by_month = (
 if not svc_by_month.empty and svc_by_month["Total_Units"].sum() > 0:
     fig_month = px.bar(
         svc_by_month, x="Month_Year_Label", y="Total_Units",
-        color="Total_Units", color_continuous_scale="Teal", text="Total_Units",
+        color="Total_Units", color_continuous_scale="Blues", # Changed to blues for a more professional look
+        text="Total_Units",
         labels={"Month_Year_Label": "Month", "Total_Units": "Total Service Units"},
     )
     fig_month.update_traces(textposition="outside")
@@ -427,7 +432,7 @@ if not melt_month.empty:
     fig_svc_month = px.bar(
         melt_month, x="Month_Year_Label", y="Units",
         color="Service_Type", barmode="stack", text="Units",
-        color_discrete_sequence=px.colors.qualitative.Safe,
+        color_discrete_sequence=px.colors.qualitative.Safe, # Good for distinct categories
         labels={"Month_Year_Label": "Month", "Units": "Units", "Service_Type": "Service"},
     )
     fig_svc_month.update_traces(textposition="inside")
@@ -452,7 +457,7 @@ cost_time = (
 if not cost_time.empty:
     fig_time = px.line(
         cost_time, x="Month_Year_Label", y="Cost_Recovery",
-        markers=True, color_discrete_sequence=["#3498db"],
+        markers=True, color_discrete_sequence=["#007BFF"], # Primary brand blue for line chart
         labels={"Month_Year_Label": "Month", "Cost_Recovery": "Cost Recovery ($)"},
     )
     fig_time.update_traces(line_width=2.5, marker_size=8)
