@@ -7,6 +7,54 @@ from datetime import datetime
 st.set_page_config(page_title="TPSR Service Request Dashboard", layout="wide")
 
 # ─────────────────────────────────────────
+# Passcode Gate — must pass before anything else loads
+# ─────────────────────────────────────────
+PASSCODE = "TPSR2025"   # ← change this to your desired passcode
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown(
+        """
+        <style>
+        .lock-container {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; margin-top: 8vh;
+        }
+        .lock-title {
+            font-size: 2rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem;
+        }
+        .lock-subtitle {
+            font-size: 1rem; color: #555; margin-bottom: 2rem;
+        }
+        </style>
+        <div class="lock-container">
+            <div style="font-size:3.5rem">🔒</div>
+            <div class="lock-title">MMC TPSR Dashboard</div>
+            <div class="lock-subtitle">Enter the passcode to continue</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_l, col_c, col_r = st.columns([1, 1, 1])
+    with col_c:
+        entered = st.text_input(
+            "Passcode", type="password", placeholder="Enter passcode…",
+            label_visibility="collapsed",
+        )
+        login_btn = st.button("🔓 Unlock", use_container_width=True)
+
+        if login_btn:
+            if entered == PASSCODE:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect passcode. Please try again.")
+    st.stop()   # halt — nothing below renders until authenticated
+
+# ─────────────────────────────────────────
 # Load & Clean Data
 # ─────────────────────────────────────────
 @st.cache_data
