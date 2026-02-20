@@ -5,34 +5,6 @@ import openpyxl
 from datetime import datetime
 
 st.set_page_config(page_title="TPSR Service Request Dashboard", layout="wide")
-# --------------------------------------------------
-# ENTERPRISE STYLING (Mobile + Elderly Friendly)
-# --------------------------------------------------
-st.markdown("""
-<style>
-html, body, [class*="css"]  {
-    font-size: 18px !important;
-}
-
-h1 {
-    color: #007BFF; /* Primary brand blue */
-    font-weight: 700;
-}
-
-h2, h3 {
-    color: #007BFF; /* Primary brand blue */
-    font-weight: 600;
-}
-
-.section-box {
-    background-color: #F3F4F6; /* Light grey, often used for content sections */
-    padding: 20px;
-    border-radius: 12px;
-    margin-bottom: 25px;
-}
-
-</style>
-""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
 # Passcode Gate — must pass before anything else loads
@@ -82,7 +54,7 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("❌ Incorrect passcode. Please try again.")
-    st.stop()   # halt — nothing below renders until authenticated
+    st.stop()   
 
 # ─────────────────────────────────────────
 # Load & Clean Data
@@ -98,10 +70,9 @@ def load_data():
     # Service columns = E(5) through L(12); M(13) = specie; N(14) = Cancer_Related_Project
     service_col_nums = [5, 6, 7, 8, 9, 10, 11, 12]
     service_cols     = [header_map[c] for c in service_col_nums]
-    CANCER_COL       = 14   # column N
+    CANCER_COL       = 14  
 
-    # Col E (FFPE processing & Embedding) is sometimes stored as an Excel
-    # date serial. Convert it back to the integer count (days since 1899-12-30).
+    
     def excel_date_to_int(val):
         if isinstance(val, datetime):
             return (val - datetime(1899, 12, 30)).days
@@ -234,7 +205,7 @@ df_filtered = df[
 # Title
 # ─────────────────────────────────────────
 st.title("MMC Translational Pathology Shared Resource Core Service Request Dashboard")
-st.caption("Cost Recovery Record – 2025 / 2026")
+st.caption("Cost Recovery Record from April 2025 / Feb 2026")
 st.divider()
 
 # ─────────────────────────────────────────
@@ -249,7 +220,7 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("✅ Completed",           completed)
 c2.metric("⏳ Pending",              pending)
 c3.metric("💰 Total Cost Recovery",  f"${total_cost:,.2f}")
-c4.metric("🧪 Total Service Units",  total_services)
+c4.metric("🧪 Total slides",  total_services)
 st.divider()
 
 # ─────────────────────────────────────────
@@ -342,7 +313,7 @@ st.divider()
 # ─────────────────────────────────────────
 # Service Types Distribution (Cols E–L)
 # ─────────────────────────────────────────
-st.subheader("📊 Service Types Distribution (Columns E – L)")
+st.subheader("📊 Service Types Distribution")
 
 svc_totals = df_filtered[service_cols].sum().reset_index()
 svc_totals.columns = ["Service_Type", "Total_Units"]
@@ -386,7 +357,7 @@ else:
 # ─────────────────────────────────────────
 # Total Service Count by Month
 # ─────────────────────────────────────────
-st.subheader("📅 Total Service Count by Month")
+st.subheader("📅 Total slide Count by Month")
 
 svc_by_month = (
     df_filtered
@@ -402,44 +373,15 @@ if not svc_by_month.empty and svc_by_month["Total_Units"].sum() > 0:
         color="Total_Units", color_continuous_scale="Blues", # Changed to blues for a more professional look
         text="Total_Units",
         labels={"Month_Year_Label": "Month", "Total_Units": "Total Service Units"},
-    )
+    
     fig_month.update_traces(textposition="outside")
     fig_month.update_layout(
-        xaxis_title="Month / Year", yaxis_title="Total Service Units",
+        xaxis_title="Month / Year", yaxis_title="Total Slides",
         coloraxis_showscale=False,
     )
     st.plotly_chart(fig_month, use_container_width=True)
 else:
     st.info("No service unit data available for the selected filters.")
-
-# Stacked service type by month
-st.subheader("Service Type Count by Month")
-
-melt_month = (
-    df_filtered[["Month_Year", "Month_Year_Label"] + service_cols]
-    .melt(id_vars=["Month_Year", "Month_Year_Label"],
-          value_vars=service_cols, var_name="Service_Type", value_name="Units")
-)
-melt_month["Service_Type"] = melt_month["Service_Type"].map(short_labels)
-melt_month = (
-    melt_month[melt_month["Units"] > 0]
-    .groupby(["Month_Year", "Month_Year_Label", "Service_Type"], as_index=False)["Units"]
-    .sum()
-    .sort_values("Month_Year")
-)
-
-if not melt_month.empty:
-    fig_svc_month = px.bar(
-        melt_month, x="Month_Year_Label", y="Units",
-        color="Service_Type", barmode="stack", text="Units",
-        color_discrete_sequence=px.colors.qualitative.Safe, # Good for distinct categories
-        labels={"Month_Year_Label": "Month", "Units": "Units", "Service_Type": "Service"},
-    )
-    fig_svc_month.update_traces(textposition="inside")
-    fig_svc_month.update_layout(xaxis_title="Month / Year", yaxis_title="Service Units")
-    st.plotly_chart(fig_svc_month, use_container_width=True)
-else:
-    st.info("No monthly service breakdown available.")
 
 # ─────────────────────────────────────────
 # Cost Recovery Over Time
