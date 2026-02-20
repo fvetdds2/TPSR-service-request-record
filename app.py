@@ -184,7 +184,7 @@ with tab1:
 
     completed = (df_filtered["Status"] == "Completed").sum()
     pending = (df_filtered["Status"] == "Pending").sum()
-    Revenue = df_filtered["Cost_Recovery"].sum()
+    revenue = df_filtered["Cost_Recovery"].sum()
     total_units = df_filtered[service_cols].sum().sum()
 
     c1, c2, c3, c4 = st.columns(4)
