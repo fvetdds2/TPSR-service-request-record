@@ -76,15 +76,67 @@ short_labels = {
 }
 
 # ─────────────────────────────────────────
+# Color Palettes
+# ─────────────────────────────────────────
+
+# Status colors — used in BOTH sidebar labels and pie chart
+STATUS_COLORS = {
+    "Completed": "#2ecc71",
+    "Pending":   "#e67e22",
+    "Unknown":   "#95a5a6",
+}
+
+# Requester colors — distinct color per requester, used in sidebar + bar charts
+REQUESTER_PALETTE = [
+    "#3498db", "#9b59b6", "#e74c3c", "#1abc9c",
+    "#f39c12", "#2980b9", "#d35400", "#27ae60",
+    "#8e44ad", "#c0392b",
+]
+all_requesters    = sorted(df["Requester_Name"].dropna().unique().tolist())
+REQUESTER_COLORS  = {name: REQUESTER_PALETTE[i % len(REQUESTER_PALETTE)]
+                     for i, name in enumerate(all_requesters)}
+
+# ─────────────────────────────────────────
 # Sidebar Filters
 # ─────────────────────────────────────────
 st.sidebar.header("🔍 Filters")
 
-status_options   = sorted(df["Status"].unique().tolist())
-status_filter    = st.sidebar.multiselect("Status",    options=status_options,   default=status_options)
+# --- Status filter with color-matched labels ---
+st.sidebar.markdown("**Status**")
+status_options  = sorted(df["Status"].unique().tolist())
+status_filter   = []
+for s in status_options:
+    color = STATUS_COLORS.get(s, "#cccccc")
+    checked = st.sidebar.checkbox(
+        label=s, value=True, key=f"status_{s}",
+        help=f"Filter by {s}"
+    )
+    # Inject colored badge next to the checkbox via markdown
+    st.sidebar.markdown(
+        f'<span style="display:inline-block;background:{color};color:white;'
+        f'padding:2px 10px;border-radius:12px;font-size:12px;'
+        f'margin-bottom:4px">{s}</span>',
+        unsafe_allow_html=True,
+    )
+    if checked:
+        status_filter.append(s)
 
-requester_options = sorted(df["Requester_Name"].dropna().unique().tolist())
-requester_filter  = st.sidebar.multiselect("Requester", options=requester_options, default=requester_options)
+st.sidebar.markdown("---")
+
+# --- Requester filter: all visible, each with its own color badge ---
+st.sidebar.markdown("**Requester**")
+requester_filter = []
+for name in all_requesters:
+    color = REQUESTER_COLORS[name]
+    checked = st.sidebar.checkbox(label=name, value=True, key=f"req_{name}")
+    st.sidebar.markdown(
+        f'<span style="display:inline-block;background:{color};color:white;'
+        f'padding:2px 10px;border-radius:12px;font-size:12px;'
+        f'margin-bottom:4px;max-width:100%;word-break:break-word">{name}</span>',
+        unsafe_allow_html=True,
+    )
+    if checked:
+        requester_filter.append(name)
 
 df_filtered = df[
     df["Status"].isin(status_filter) &
@@ -125,7 +177,7 @@ with left:
     fig_pie = px.pie(
         sc, names="Status", values="Count", hole=0.4,
         color="Status",
-        color_discrete_map={"Completed": "#2ecc71", "Pending": "#e67e22", "Unknown": "#95a5a6"},
+        color_discrete_map=STATUS_COLORS,   # ← exactly matches sidebar badge colors
     )
     fig_pie.update_traces(textinfo="label+percent+value")
     st.plotly_chart(fig_pie, use_container_width=True)
@@ -141,11 +193,13 @@ with right:
     )
     fig_req = px.bar(
         req_df, x="Requester_Name", y="Count",
-        color="Cost", color_continuous_scale="Blues", text="Count",
-        labels={"Requester_Name": "Requester", "Count": "No. of Requests", "Cost": "Cost ($)"},
+        color="Requester_Name",
+        color_discrete_map=REQUESTER_COLORS,   # ← each requester gets their unique color
+        text="Count",
+        labels={"Requester_Name": "Requester", "Count": "No. of Requests"},
     )
     fig_req.update_traces(textposition="outside")
-    fig_req.update_layout(xaxis_tickangle=-30, coloraxis_colorbar_title="Cost ($)")
+    fig_req.update_layout(xaxis_tickangle=-30, showlegend=False)
     st.plotly_chart(fig_req, use_container_width=True)
 
 # ─────────────────────────────────────────
