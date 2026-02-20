@@ -229,7 +229,8 @@ st.divider()
 # ─────────────────────────────────────────
 st.subheader("Cancer Related Project")
 
-cancer_col2 = st.columns(1)
+# Correctly unpack the single column from st.columns(1)
+(cancer_col2,) = st.columns(1)
 
 with cancer_col2:
     # Stacked bar: Cancer Yes/No per requester
@@ -238,21 +239,36 @@ with cancer_col2:
         .size()
         .reset_index(name="Count")
     )
+
     fig_cancer_bar = px.bar(
         cancer_req,
-        x="Requester_Name", y="Count",
+        x="Requester_Name",
+        y="Count",
         color="Cancer_Related_Project",
         barmode="stack",
         text="Count",
-        color_discrete_map={"Yes": "#DC3545", "No": "#007BFF", "Unknown": "#6C757D"}, # Red for Yes, Blue for No, Grey for Unknown
-        labels={"Requester_Name": "Requester", "Count": "Projects",
-                "Cancer_Related_Project": "Cancer Related"},
+        color_discrete_map={
+            "Yes": "#DC3545",
+            "No": "#007BFF",
+            "Unknown": "#6C757D",
+        },  # Red for Yes, Blue for No, Grey for Unknown
+        labels={
+            "Requester_Name": "Requester",
+            "Count": "Projects",
+            "Cancer_Related_Project": "Cancer Related",
+        },
     )
+
     fig_cancer_bar.update_traces(textposition="inside")
-    fig_cancer_bar.update_layout(xaxis_tickangle=-30, legend_title_text="Cancer Related")
+    fig_cancer_bar.update_layout(
+        xaxis_tickangle=-30,
+        legend_title_text="Cancer Related"
+    )
+
     st.plotly_chart(fig_cancer_bar, use_container_width=True)
 
 st.divider()
+
 
 # ─────────────────────────────────────────
 # Service Types Distribution (Cols E–L)
