@@ -357,32 +357,40 @@ else:
 # ─────────────────────────────────────────
 # Total Service Count by Month
 # ─────────────────────────────────────────
-st.subheader("📅 Total slide Count by Month")
+st.subheader("📅 Total Slide Count by Month")
 
 svc_by_month = (
     df_filtered
     .assign(Total_Units=df_filtered[service_cols].sum(axis=1))
     .groupby(["Month_Year", "Month_Year_Label"], as_index=False)["Total_Units"]
-    .sum()
+    .sum()   # ← THIS is where .sum() goes
     .sort_values("Month_Year")
 )
 
 if not svc_by_month.empty and svc_by_month["Total_Units"].sum() > 0:
     fig_month = px.bar(
-        svc_by_month, x="Month_Year_Label", y="Total_Units",
-        color="Total_Units", color_continuous_scale="Blues", # Changed to blues for a more professional look
+        svc_by_month,
+        x="Month_Year_Label",
+        y="Total_Units",
+        color="Total_Units",
+        color_continuous_scale="Blues",
         text="Total_Units",
-        labels={"Month_Year_Label": "Month", "Total_Units": "Total Service Units"},
-    
+        labels={
+            "Month_Year_Label": "Month",
+            "Total_Units": "Total Service Units"
+        },
+    )  # ← THIS closes px.bar()
+
     fig_month.update_traces(textposition="outside")
     fig_month.update_layout(
-        xaxis_title="Month / Year", yaxis_title="Total Slides",
+        xaxis_title="Month / Year",
+        yaxis_title="Total Slides",
         coloraxis_showscale=False,
     )
+
     st.plotly_chart(fig_month, use_container_width=True)
 else:
     st.info("No service unit data available for the selected filters.")
-
 # ─────────────────────────────────────────
 # Cost Recovery Over Time
 # ─────────────────────────────────────────
