@@ -141,7 +141,7 @@ st.divider()
 # ==========================================================
 # FILTER PANEL
 # ==========================================================
-
+st.write("DF exists?", "df" in locals())
 st.sidebar.header("Global Filters")
 
 status_filter = st.sidebar.multiselect(
