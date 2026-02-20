@@ -74,40 +74,61 @@ if not st.session_state.authenticated:
 # ==========================================================
 # DATA LOADER
 # ==========================================================
-
 @st.cache_data
 def load_data():
     wb = openpyxl.load_workbook("cost_recovery_record_from_2025.xlsx")
     ws = wb.active
-    
+
     header_map = {cell.column: cell.value for cell in ws[1] if cell.value}
-    service_cols = [header_map[i] for i in range(5,13)]
-    
+    service_cols = [header_map[i] for i in range(5, 13)]
+
+    def safe_float(value):
+        """Enterprise-safe numeric conversion."""
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, datetime):
+            return 0.0
+        try:
+            return float(str(value).strip())
+        except (ValueError, TypeError):
+            return 0.0
+
     records = []
+
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not any(row):
             continue
-            
+
         record = {
-            "Requester_Name": row[0],
-            "Required_Date": pd.to_datetime(row[1], errors="coerce"),
-            "Status": row[2] or "Unknown",
-            "Cost_Recovery": float(row[3] or 0),
-            "Cancer_Related_Project": str(row[13]).capitalize() if row[13] else "Unknown"
+            "Requester_Name": row[0] if len(row) > 0 else None,
+            "Required_Date": pd.to_datetime(row[1], errors="coerce") if len(row) > 1 else None,
+            "Status": row[2] if len(row) > 2 and row[2] else "Unknown",
+            "Cost_Recovery": safe_float(row[3]) if len(row) > 3 else 0.0,
+            "Cancer_Related_Project": (
+                str(row[13]).capitalize()
+                if len(row) > 13 and row[13]
+                else "Unknown"
+            ),
         }
-        
+
+        # SAFE SERVICE COLUMN PARSING
         for i, col in enumerate(service_cols):
-            record[col] = float(row[4+i] or 0)
-        
+            index = 4 + i
+            if index < len(row):
+                record[col] = safe_float(row[index])
+            else:
+                record[col] = 0.0
+
         records.append(record)
-    
+
     df = pd.DataFrame(records)
+
     df["Month"] = df["Required_Date"].dt.to_period("M")
     df["Month_Label"] = df["Required_Date"].dt.strftime("%b %Y")
-    
-    return df, service_cols
 
-df, service_cols = load_data()
+    return df, service_cols
 
 # ==========================================================
 # HEADER
