@@ -223,42 +223,6 @@ c3.metric("💰 Total Cost Recovery",  f"${total_cost:,.2f}")
 c4.metric("🧪 Total slides",  total_services)
 st.divider()
 
-# ─────────────────────────────────────────
-# Row 1 — Status Pie | Requests by Requester
-# ─────────────────────────────────────────
-left, right = st.columns(2)
-
-with left:
-    st.subheader("Status Breakdown")
-    sc = df_filtered["Status"].value_counts().reset_index()
-    sc.columns = ["Status", "Count"]
-    fig_pie = px.pie(
-        sc, names="Status", values="Count", hole=0.4,
-        color="Status",
-        color_discrete_map=STATUS_COLORS,   # ← exactly matches sidebar badge colors
-    )
-    fig_pie.update_traces(textinfo="label+percent+value")
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-with right:
-    st.subheader("Requests by Requester")
-    req_df = (
-        df_filtered
-        .groupby("Requester_Name")
-        .agg(Count=("Status", "count"), Cost=("Cost_Recovery", "sum"))
-        .reset_index()
-        .sort_values("Count", ascending=False)
-    )
-    fig_req = px.bar(
-        req_df, x="Requester_Name", y="Count",
-        color="Requester_Name",
-        color_discrete_map=REQUESTER_COLORS,   # ← each requester gets their unique color
-        text="Count",
-        labels={"Requester_Name": "Requester", "Count": "No. of Requests"},
-    )
-    fig_req.update_traces(textposition="outside")
-    fig_req.update_layout(xaxis_tickangle=-30, showlegend=False)
-    st.plotly_chart(fig_req, use_container_width=True)
 
 # ─────────────────────────────────────────
 # Cancer Related Project Chart
