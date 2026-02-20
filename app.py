@@ -1,13 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
+import openpyxl
+from datetime import datetime
 
-st.set_page_config(
-    page_title="TPSR Core Service Analytics",
-    layout="wide"
-)
-
+st.set_page_config(page_title="TPSR Service Request Dashboard", layout="wide")
 # --------------------------------------------------
 # ENTERPRISE STYLING (Mobile + Elderly Friendly)
 # --------------------------------------------------
@@ -37,300 +34,442 @@ h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------------------------------------
-# PASSCODE (Use Streamlit secrets in production)
-# --------------------------------------------------
-PASSCODE = "TPSR2025"
+# ─────────────────────────────────────────
+# Passcode Gate — must pass before anything else loads
+# ─────────────────────────────────────────
+PASSCODE = "TPSR2025"   # ← change this to your desired passcode
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔒 TPSR Core Service Analytics")
-    entered = st.text_input("Enter Access Code", type="password")
-    if st.button("Unlock"):
-        if entered == PASSCODE:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect access code.")
-    st.stop()
+    st.markdown(
+        """
+        <style>
+        .lock-container {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; margin-top: 8vh;
+        }
+        .lock-title {
+            font-size: 2rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem;
+        }
+        .lock-subtitle {
+            font-size: 1rem; color: #555; margin-bottom: 2rem;
+        }
+        </style>
+        <div class="lock-container">
+            <div style="font-size:3.5rem">🔒</div>
+            <div class="lock-title">MMC TPSR Dashboard</div>
+            <div class="lock-subtitle">Enter the passcode to continue</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
+    col_l, col_c, col_r = st.columns([1, 1, 1])
+    with col_c:
+        entered = st.text_input(
+            "Passcode", type="password", placeholder="Enter passcode…",
+            label_visibility="collapsed",
+        )
+        login_btn = st.button("🔓 Unlock", use_container_width=True)
+
+        if login_btn:
+            if entered == PASSCODE:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect passcode. Please try again.")
+    st.stop()   # halt — nothing below renders until authenticated
+
+# ─────────────────────────────────────────
+# Load & Clean Data
+# ─────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_excel(
-        "cost_recovery_record_from_2025.xlsx",
-        engine="openpyxl"
+    wb = openpyxl.load_workbook("cost_recovery_record_from_2025.xlsx")
+    ws = wb.active
+
+    # Build header map from row 1: col_number -> header name
+    header_map = {cell.column: cell.value for cell in ws[1] if cell.value}
+
+    # Service columns = E(5) through L(12); M(13) = specie; N(14) = Cancer_Related_Project
+    service_col_nums = [5, 6, 7, 8, 9, 10, 11, 12]
+    service_cols     = [header_map[c] for c in service_col_nums]
+    CANCER_COL       = 14   # column N
+
+    # Col E (FFPE processing & Embedding) is sometimes stored as an Excel
+    # date serial. Convert it back to the integer count (days since 1899-12-30).
+    def excel_date_to_int(val):
+        if isinstance(val, datetime):
+            return (val - datetime(1899, 12, 30)).days
+        return val
+
+    records = []
+    for row in ws.iter_rows(min_row=2, values_only=False):
+        if all(cell.value is None for cell in row):
+            continue
+
+        vals = {cell.column: cell.value for cell in row if cell.value is not None}
+
+        name   = vals.get(1)
+        date   = vals.get(2)
+        status = vals.get(3)
+        cost   = vals.get(4, 0) or 0
+
+        svc = {}
+        for col_num, col_name in zip(service_col_nums, service_cols):
+            raw = vals.get(col_num)
+            raw = excel_date_to_int(raw)
+            svc[col_name] = float(raw) if isinstance(raw, (int, float)) else 0.0
+
+        cancer_raw = vals.get(CANCER_COL, "")
+        cancer_val = str(cancer_raw).strip().capitalize() if cancer_raw else "Unknown"
+        if cancer_val not in ("Yes", "No"):
+            cancer_val = "Unknown"
+
+        records.append({
+            "Requester_Name":         name,
+            "Required_Date":          pd.to_datetime(date, errors="coerce"),
+            "Status":                 status or "Unknown",
+            "Cost_Recovery":          float(cost) if isinstance(cost, (int, float)) else 0.0,
+            "Cancer_Related_Project": cancer_val,
+            **svc,
+        })
+
+    df = pd.DataFrame(records)
+    df["Month_Year"]       = df["Required_Date"].dt.to_period("M")
+    df["Month_Year_Label"] = df["Required_Date"].dt.strftime("%b %Y")
+
+    return df, service_cols
+
+
+df, service_cols = load_data()
+
+# Short display labels for charts
+short_labels = {
+    "FFPE processing & Embedding":               "FFPE Process & Embed",
+    "FFPE sectioning & H&E stain":               "FFPE Section & H&E",
+    "Frozen sectioning-unstained slide":         "Frozen Unstained",
+    "Frozen sectioning & H&E stain":             "Frozen H&E",
+    "Frozen sectioning-step section":            "Frozen Step Section",
+    "Repository FFPE sectioning-unstained slide":"Repo FFPE Unstained",
+    "histology tissue collection vials":         "Histology Vials",
+    "histopathology support (hr)":               "Histopath Support (hr)",
+}
+
+# ─────────────────────────────────────────
+# Color Palettes
+# ─────────────────────────────────────────
+
+# Status colors — used in BOTH sidebar labels and pie chart
+STATUS_COLORS = {
+    "Completed": "#2ecc71",
+    "Pending":   "#e67e22",
+    "Unknown":   "#95a5a6",
+}
+
+# Requester colors — distinct color per requester, used in sidebar + bar charts
+REQUESTER_PALETTE = [
+    "#3498db", "#9b59b6", "#e74c3c", "#1abc9c",
+    "#f39c12", "#2980b9", "#d35400", "#27ae60",
+    "#8e44ad", "#c0392b",
+]
+all_requesters    = sorted(df["Requester_Name"].dropna().unique().tolist())
+REQUESTER_COLORS  = {name: REQUESTER_PALETTE[i % len(REQUESTER_PALETTE)]
+                     for i, name in enumerate(all_requesters)}
+
+# ─────────────────────────────────────────
+# Sidebar Filters
+# ─────────────────────────────────────────
+st.sidebar.header("🔍 Filters")
+
+# --- Status filter with color-matched labels ---
+st.sidebar.markdown("**Status**")
+status_options  = sorted(df["Status"].unique().tolist())
+status_filter   = []
+for s in status_options:
+    color = STATUS_COLORS.get(s, "#cccccc")
+    checked = st.sidebar.checkbox(
+        label=s, value=True, key=f"status_{s}",
+        help=f"Filter by {s}"
     )
-
-    df["Required_Date"] = pd.to_datetime(df["Required_Date"], errors="coerce")
-    df["Month_Year"] = df["Required_Date"].dt.to_period("M")
-    df["Month_Label"] = df["Required_Date"].dt.strftime("%b %Y")
-
-    df["Cancer_Related_Project"] = (
-        df["Cancer_Related_Project"]
-        .astype(str)
-        .str.strip()
-        .str.capitalize()
+    # Inject colored badge next to the checkbox via markdown
+    st.sidebar.markdown(
+        f'<span style="display:inline-block;background:{color};color:white;'
+        f'padding:2px 10px;border-radius:12px;font-size:12px;'
+        f'margin-bottom:4px">{s}</span>',
+        unsafe_allow_html=True,
     )
+    if checked:
+        status_filter.append(s)
 
-    return df
+st.sidebar.markdown("---")
 
-df = load_data()
-
-# --------------------------------------------------
-# SIDEBAR FILTERS
-# --------------------------------------------------
-st.sidebar.header("Filters")
-
-status_filter = st.sidebar.multiselect(
-    "Select Status",
-    df["Status"].dropna().unique(),
-    default=df["Status"].dropna().unique()
-)
-
-requester_filter = st.sidebar.multiselect(
-    "Select Requester",
-    df["Requester_Name"].dropna().unique(),
-    default=df["Requester_Name"].dropna().unique()
-)
+# --- Requester filter: all visible, each with its own color badge ---
+st.sidebar.markdown("**Requester**")
+requester_filter = []
+for name in all_requesters:
+    color = REQUESTER_COLORS[name]
+    checked = st.sidebar.checkbox(label=name, value=True, key=f"req_{name}")
+    st.sidebar.markdown(
+        f'<span style="display:inline-block;background:{color};color:white;'
+        f'padding:2px 10px;border-radius:12px;font-size:12px;'
+        f'margin-bottom:4px;max-width:100%;word-break:break-word">{name}</span>',
+        unsafe_allow_html=True,
+    )
+    if checked:
+        requester_filter.append(name)
 
 df_filtered = df[
     df["Status"].isin(status_filter) &
     df["Requester_Name"].isin(requester_filter)
 ]
 
-# --------------------------------------------------
-# HEADER
-# --------------------------------------------------
-st.title("Translational Pathology Shared Resource")
-st.subheader("Core Service Request Activity & Cost Recovery Overview")
+# ─────────────────────────────────────────
+# Title
+# ─────────────────────────────────────────
+st.title("MMC Translational Pathology Shared Resource Core Service Request Dashboard")
+st.caption("Cost Recovery Record – 2025 / 2026")
 st.divider()
 
-# --------------------------------------------------
-# STATUS DISTRIBUTION
-# --------------------------------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Service Request Status Distribution")
+# ─────────────────────────────────────────
+# Metrics
+# ─────────────────────────────────────────
+completed      = int((df_filtered["Status"] == "Completed").sum())
+pending        = int((df_filtered["Status"] == "Pending").sum())
+total_cost     = df_filtered["Cost_Recovery"].sum()
+total_services = int(df_filtered[service_cols].sum().sum())
 
-status_counts = (
-    df_filtered["Status"]
-    .value_counts()
-    .reset_index()
-)
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("✅ Completed",           completed)
+c2.metric("⏳ Pending",              pending)
+c3.metric("💰 Total Cost Recovery",  f"${total_cost:,.2f}")
+c4.metric("🧪 Total Service Units",  total_services)
+st.divider()
 
-status_counts.columns = ["Status", "Number of Requests"]
+# ─────────────────────────────────────────
+# Row 1 — Status Pie | Requests by Requester
+# ─────────────────────────────────────────
+left, right = st.columns(2)
 
-fig_status = px.bar(
-    status_counts,
-    x="Status",
-    y="Number of Requests",
-    color="Status",
-    text="Number of Requests",
-    color_discrete_map={
-        "Completed": "#16A34A",
-        "Pending": "#F59E0B",
-        "Unknown": "#9CA3AF"
-    }
-)
+with left:
+    st.subheader("Status Breakdown")
+    sc = df_filtered["Status"].value_counts().reset_index()
+    sc.columns = ["Status", "Count"]
+    fig_pie = px.pie(
+        sc, names="Status", values="Count", hole=0.4,
+        color="Status",
+        color_discrete_map=STATUS_COLORS,   # ← exactly matches sidebar badge colors
+    )
+    fig_pie.update_traces(textinfo="label+percent+value")
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-fig_status.update_traces(textposition="outside")
-fig_status.update_layout(
-    xaxis_title="Request Status",
-    yaxis_title="Number of Requests",
-    showlegend=False,
-    font=dict(size=18)
-)
+with right:
+    st.subheader("Requests by Requester")
+    req_df = (
+        df_filtered
+        .groupby("Requester_Name")
+        .agg(Count=("Status", "count"), Cost=("Cost_Recovery", "sum"))
+        .reset_index()
+        .sort_values("Count", ascending=False)
+    )
+    fig_req = px.bar(
+        req_df, x="Requester_Name", y="Count",
+        color="Requester_Name",
+        color_discrete_map=REQUESTER_COLORS,   # ← each requester gets their unique color
+        text="Count",
+        labels={"Requester_Name": "Requester", "Count": "No. of Requests"},
+    )
+    fig_req.update_traces(textposition="outside")
+    fig_req.update_layout(xaxis_tickangle=-30, showlegend=False)
+    st.plotly_chart(fig_req, use_container_width=True)
 
-st.plotly_chart(fig_status, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# ─────────────────────────────────────────
+# Cancer Related Project Chart
+# ─────────────────────────────────────────
+st.subheader("🎗️ Cancer Related Project")
 
-# --------------------------------------------------
-# REQUESTS BY INVESTIGATOR
-# --------------------------------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Requests by Investigator")
+cancer_col1, cancer_col2 = st.columns(2)
 
-req_counts = (
-    df_filtered
-    .groupby("Requester_Name")
-    .size()
-    .reset_index(name="Number of Requests")
-    .sort_values("Number of Requests", ascending=False)
-)
+with cancer_col1:
+    cancer_counts = (
+        df_filtered["Cancer_Related_Project"]
+        .value_counts()
+        .reindex(["Yes", "No", "Unknown"], fill_value=0)
+        .reset_index()
+    )
+    cancer_counts.columns = ["Cancer_Related", "Count"]
+    cancer_counts = cancer_counts[cancer_counts["Count"] > 0]
 
-fig_req = px.bar(
-    req_counts,
-    x="Requester_Name",
-    y="Number of Requests",
-    text="Number of Requests",
-    color_discrete_sequence=["#1F3A8A"]
-)
+    fig_cancer_pie = px.pie(
+        cancer_counts, names="Cancer_Related", values="Count",
+        hole=0.4,
+        color="Cancer_Related",
+        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+    )
+    fig_cancer_pie.update_traces(textinfo="label+percent+value")
+    fig_cancer_pie.update_layout(legend_title_text="Cancer Related")
+    st.plotly_chart(fig_cancer_pie, use_container_width=True)
 
-fig_req.update_traces(textposition="outside")
-fig_req.update_layout(
-    xaxis_title="Investigator",
-    yaxis_title="Number of Requests",
-    showlegend=False,
-    font=dict(size=18)
-)
+with cancer_col2:
+    # Stacked bar: Cancer Yes/No per requester
+    cancer_req = (
+        df_filtered.groupby(["Requester_Name", "Cancer_Related_Project"])
+        .size()
+        .reset_index(name="Count")
+    )
+    fig_cancer_bar = px.bar(
+        cancer_req,
+        x="Requester_Name", y="Count",
+        color="Cancer_Related_Project",
+        barmode="stack",
+        text="Count",
+        color_discrete_map={"Yes": "#e74c3c", "No": "#3498db", "Unknown": "#95a5a6"},
+        labels={"Requester_Name": "Requester", "Count": "Projects",
+                "Cancer_Related_Project": "Cancer Related"},
+    )
+    fig_cancer_bar.update_traces(textposition="inside")
+    fig_cancer_bar.update_layout(xaxis_tickangle=-30, legend_title_text="Cancer Related")
+    st.plotly_chart(fig_cancer_bar, use_container_width=True)
 
-st.plotly_chart(fig_req, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.divider()
 
-# --------------------------------------------------
-# SERVICE TYPE DISTRIBUTION
-# --------------------------------------------------
-service_cols = [
-    "FFPE processing & Embedding",
-    "FFPE sectioning & H&E stain",
-    "Frozen sectioning-unstained slide",
-    "Frozen sectioning & H&E stain",
-    "Frozen sectioning-step section",
-    "Repository FFPE sectioning-unstained slide",
-    "histology tissue collection vials",
-    "histopathology support (hr)"
-]
+# ─────────────────────────────────────────
+# Service Types Distribution (Cols E–L)
+# ─────────────────────────────────────────
+st.subheader("📊 Service Types Distribution (Columns E – L)")
 
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Service Type Utilization")
-
-svc_totals = (
-    df_filtered[service_cols]
-    .sum()
-    .reset_index()
-)
-
-svc_totals.columns = ["Service Type", "Total Units"]
-svc_totals = svc_totals.sort_values("Total Units", ascending=False)
+svc_totals = df_filtered[service_cols].sum().reset_index()
+svc_totals.columns = ["Service_Type", "Total_Units"]
+svc_totals["Short_Label"] = svc_totals["Service_Type"].map(short_labels)
+svc_totals = svc_totals.sort_values("Total_Units", ascending=False)
 
 fig_svc = px.bar(
-    svc_totals,
-    x="Service Type",
-    y="Total Units",
-    text="Total Units",
-    color_discrete_sequence=["#0F766E"]
+    svc_totals, x="Short_Label", y="Total_Units",
+    color="Short_Label",
+    color_discrete_sequence=px.colors.qualitative.Safe,
+    text="Total_Units",
+    labels={"Short_Label": "Service Type", "Total_Units": "Total Units"},
 )
-
 fig_svc.update_traces(textposition="outside")
-fig_svc.update_layout(
-    xaxis_title="Service Type",
-    yaxis_title="Total Units",
-    showlegend=False,
-    font=dict(size=18)
-)
-
+fig_svc.update_layout(showlegend=False, xaxis_title="Service Type", yaxis_title="Total Units")
 st.plotly_chart(fig_svc, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
 
-# --------------------------------------------------
-# MONTHLY SERVICE VOLUME
-# --------------------------------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Monthly Service Volume")
+# Per-requester grouped bar
+st.subheader("Service Units per Requester by Type")
+melt = (
+    df_filtered[["Requester_Name"] + service_cols]
+    .melt(id_vars="Requester_Name", value_vars=service_cols,
+          var_name="Service_Type", value_name="Units")
+)
+melt["Service_Type"] = melt["Service_Type"].map(short_labels)
+melt = melt[melt["Units"] > 0]
 
-df_filtered["Total_Service_Units"] = df_filtered[service_cols].sum(axis=1)
+if not melt.empty:
+    fig_grp = px.bar(
+        melt, x="Requester_Name", y="Units",
+        color="Service_Type", barmode="group", text="Units",
+        color_discrete_sequence=px.colors.qualitative.Safe,
+        labels={"Requester_Name": "Requester", "Units": "Units", "Service_Type": "Service"},
+    )
+    fig_grp.update_traces(textposition="outside")
+    fig_grp.update_layout(xaxis_tickangle=-30)
+    st.plotly_chart(fig_grp, use_container_width=True)
+else:
+    st.info("No service unit data to display for the selected filters.")
 
-monthly_services = (
+# ─────────────────────────────────────────
+# Total Service Count by Month
+# ─────────────────────────────────────────
+st.subheader("📅 Total Service Count by Month")
+
+svc_by_month = (
     df_filtered
-    .groupby(["Month_Year", "Month_Label"])["Total_Service_Units"]
+    .assign(Total_Units=df_filtered[service_cols].sum(axis=1))
+    .groupby(["Month_Year", "Month_Year_Label"], as_index=False)["Total_Units"]
+    .sum()
+    .sort_values("Month_Year")
+)
+
+if not svc_by_month.empty and svc_by_month["Total_Units"].sum() > 0:
+    fig_month = px.bar(
+        svc_by_month, x="Month_Year_Label", y="Total_Units",
+        color="Total_Units", color_continuous_scale="Teal", text="Total_Units",
+        labels={"Month_Year_Label": "Month", "Total_Units": "Total Service Units"},
+    )
+    fig_month.update_traces(textposition="outside")
+    fig_month.update_layout(
+        xaxis_title="Month / Year", yaxis_title="Total Service Units",
+        coloraxis_showscale=False,
+    )
+    st.plotly_chart(fig_month, use_container_width=True)
+else:
+    st.info("No service unit data available for the selected filters.")
+
+# Stacked service type by month
+st.subheader("Service Type Count by Month")
+
+melt_month = (
+    df_filtered[["Month_Year", "Month_Year_Label"] + service_cols]
+    .melt(id_vars=["Month_Year", "Month_Year_Label"],
+          value_vars=service_cols, var_name="Service_Type", value_name="Units")
+)
+melt_month["Service_Type"] = melt_month["Service_Type"].map(short_labels)
+melt_month = (
+    melt_month[melt_month["Units"] > 0]
+    .groupby(["Month_Year", "Month_Year_Label", "Service_Type"], as_index=False)["Units"]
+    .sum()
+    .sort_values("Month_Year")
+)
+
+if not melt_month.empty:
+    fig_svc_month = px.bar(
+        melt_month, x="Month_Year_Label", y="Units",
+        color="Service_Type", barmode="stack", text="Units",
+        color_discrete_sequence=px.colors.qualitative.Safe,
+        labels={"Month_Year_Label": "Month", "Units": "Units", "Service_Type": "Service"},
+    )
+    fig_svc_month.update_traces(textposition="inside")
+    fig_svc_month.update_layout(xaxis_title="Month / Year", yaxis_title="Service Units")
+    st.plotly_chart(fig_svc_month, use_container_width=True)
+else:
+    st.info("No monthly service breakdown available.")
+
+# ─────────────────────────────────────────
+# Cost Recovery Over Time
+# ─────────────────────────────────────────
+st.subheader("💵 Cost Recovery Over Time")
+
+cost_time = (
+    df_filtered
+    .groupby(["Month_Year", "Month_Year_Label"])["Cost_Recovery"]
     .sum()
     .reset_index()
     .sort_values("Month_Year")
 )
 
-fig_month = px.bar(
-    monthly_services,
-    x="Month_Label",
-    y="Total_Service_Units",
-    text="Total_Service_Units",
-    color_discrete_sequence=["#1F3A8A"]
-)
+if not cost_time.empty:
+    fig_time = px.line(
+        cost_time, x="Month_Year_Label", y="Cost_Recovery",
+        markers=True, color_discrete_sequence=["#3498db"],
+        labels={"Month_Year_Label": "Month", "Cost_Recovery": "Cost Recovery ($)"},
+    )
+    fig_time.update_traces(line_width=2.5, marker_size=8)
+    fig_time.update_layout(xaxis_title="Month / Year", yaxis_title="Cost ($)")
+    st.plotly_chart(fig_time, use_container_width=True)
+else:
+    st.info("No date data available.")
 
-fig_month.update_traces(textposition="outside")
-fig_month.update_layout(
-    xaxis_title="Month",
-    yaxis_title="Total Service Units",
-    showlegend=False,
-    font=dict(size=18)
-)
-
-st.plotly_chart(fig_month, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# --------------------------------------------------
-# MONTHLY COST RECOVERY
-# --------------------------------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Monthly Cost Recovery")
-
-monthly_cost = (
-    df_filtered
-    .groupby(["Month_Year", "Month_Label"])["Cost_Recovery"]
-    .sum()
-    .reset_index()
-    .sort_values("Month_Year")
-)
-
-fig_cost = px.line(
-    monthly_cost,
-    x="Month_Label",
-    y="Cost_Recovery",
-    markers=True,
-    color_discrete_sequence=["#0F766E"]
-)
-
-fig_cost.update_layout(
-    xaxis_title="Month",
-    yaxis_title="Cost Recovery ($)",
-    font=dict(size=18)
-)
-
-st.plotly_chart(fig_cost, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# --------------------------------------------------
-# CANCER RELATED PROJECT DISTRIBUTION
-# --------------------------------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Cancer-Related Project Distribution")
-
-cancer_counts = (
-    df_filtered["Cancer_Related_Project"]
-    .value_counts()
-    .reset_index()
-)
-
-cancer_counts.columns = ["Cancer Related", "Number of Projects"]
-
-fig_cancer = px.bar(
-    cancer_counts,
-    x="Cancer Related",
-    y="Number of Projects",
-    text="Number of Projects",
-    color_discrete_map={
-        "Yes": "#1F3A8A",
-        "No": "#0F766E",
-        "Unknown": "#9CA3AF"
-    }
-)
-
-fig_cancer.update_traces(textposition="outside")
-fig_cancer.update_layout(
-    xaxis_title="Cancer Related Project",
-    yaxis_title="Number of Projects",
-    showlegend=False,
-    font=dict(size=18)
-)
-
-st.plotly_chart(fig_cancer, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# --------------------------------------------------
-# RAW DATA TABLE
-# --------------------------------------------------
-with st.expander("View Detailed Data Table"):
-    st.dataframe(df_filtered, use_container_width=True)
+# ─────────────────────────────────────────
+# Raw Data Table
+# ─────────────────────────────────────────
+with st.expander("📋 Raw Data Table"):
+    display_df = df_filtered[
+        ["Requester_Name", "Month_Year_Label", "Status", "Cost_Recovery"] + service_cols
+    ].copy()
+    display_df = display_df.rename(columns={"Month_Year_Label": "Month / Year", **short_labels})
+    st.dataframe(
+        display_df.style.format({"Cost_Recovery": "${:,.2f}"}),
+        use_container_width=True,
+    )
