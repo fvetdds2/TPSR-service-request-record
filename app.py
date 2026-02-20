@@ -184,8 +184,8 @@ with tab1:
 
     completed = (df_filtered["Status"] == "Completed").sum()
     pending = (df_filtered["Status"] == "Pending").sum()
-    Cost Recovery = df_filtered["Cost_Recovery"].sum()
-    total_slides = df_filtered[service_cols].sum().sum()
+    Revenue = df_filtered["Cost_Recovery"].sum()
+    total_units = df_filtered[service_cols].sum().sum()
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -201,7 +201,7 @@ with tab1:
 
     with c3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Total Revenue", f"${revenue:,.0f}")
+        st.metric("Total Cost Recovey", f"${revenue:,.0f}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with c4:
