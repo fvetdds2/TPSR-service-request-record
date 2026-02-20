@@ -184,8 +184,8 @@ with tab1:
 
     completed = (df_filtered["Status"] == "Completed").sum()
     pending = (df_filtered["Status"] == "Pending").sum()
-    revenue = df_filtered["Cost_Recovery"].sum()
-    total_units = df_filtered[service_cols].sum().sum()
+    Cost Recovery = df_filtered["Cost_Recovery"].sum()
+    total_slides = df_filtered[service_cols].sum().sum()
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -240,7 +240,7 @@ with tab2:
 with tab3:
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.subheader("Revenue Trend")
+    st.subheader("Cost Recovery Trend")
 
     revenue_trend = (
         df_filtered.groupby(["Month", "Month_Label"])["Cost_Recovery"]
