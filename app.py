@@ -57,7 +57,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.markdown("<h1 style='text-align:center'>TPSR CoreSight™</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;color:gray'>Enterprise Laboratory Intelligence Platform</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;color:gray'>Laboratory Activity Dashboard</p>", unsafe_allow_html=True)
 
     entered = st.text_input("Enter Access Key", type="password")
     if st.button("Secure Login"):
