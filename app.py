@@ -173,7 +173,7 @@ df_filtered = df[
 tab1, tab2, tab3 = st.tabs([
     "Executive Overview",
     "Service Analytics",
-    "Financial Intelligence"
+    "Financial Analysis"
 ])
 
 # ==========================================================
