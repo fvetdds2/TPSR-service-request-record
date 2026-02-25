@@ -136,7 +136,7 @@ except Exception as e:
 # ==========================================================
 
 st.markdown("<h1>TPSR CoreSight™</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#6B7280'>Translational Pathology Shared Resource Intelligence Platform</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#6B7280'>Translational Pathology Shared Resource Core Dashboard</p>", unsafe_allow_html=True)
 st.divider()
 
 # ==========================================================
